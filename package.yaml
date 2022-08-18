@@ -48,6 +48,7 @@ executables:
     - fishy
     - shelly
     - text
+    - cmdargs
 
 tests:
   fishy-test:

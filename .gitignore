@@ -1,2 +1,6 @@
 .stack-work/
+fishy
+*.hi
+*.o
+*.rdb
 *~
