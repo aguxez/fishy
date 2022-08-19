@@ -8,7 +8,8 @@ module Main (main) where
 
 import Control.Monad (void)
 import Data.Maybe (maybeToList)
-import Data.Text as T
+import Data.Text (Text)
+import qualified Data.Text as T
 import Shelly
 import System.Console.CmdArgs.Implicit
 
@@ -38,7 +39,7 @@ runMixSuite cArgs = do
   shelly $
     verbosely $ do
       cd $ project cArgs
-      run_ "mix" $ "test" : maybeToList (testPath cArgs)
+      run_ "mix" $ "test" : maybeToList (testPath cArgs) ++ ["--color"]
 
 runElixirMigrations :: FilePath -> Text -> Sh ()
 runElixirMigrations projectPath appName = do
