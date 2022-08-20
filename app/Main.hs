@@ -28,10 +28,11 @@ elixirSuite =
 
 runRedisServer :: Sh ()
 runRedisServer = do
-  echo "Running Redis Server..."
-  shelly $
-    silently $ do
-      run_ "redis-server" []
+  echo "Running Redis server..."
+  escaping False $
+    shelly $
+      silently $ do
+        run_ "redis-server" []
 
 runMixSuite :: Fishy -> Sh ()
 runMixSuite cArgs = do
@@ -59,6 +60,16 @@ elixirProjectPath :: Maybe Text -> Text -> FilePath
 elixirProjectPath (Just home) projectName = fromText . T.intercalate "" $ [home, "/Development/zed/", projectName]
 elixirProjectPath Nothing projectName = fromText projectName
 
+closeRedisServer :: Sh ()
+closeRedisServer = do
+  echo "Trying to kill Redis server..."
+  shelly $
+    silently $ do
+      process <- run "pgrep" ["6379"]
+      unless (process == "") $ do
+        echo "Killing Redis server..."
+        run_ "kill" ["-KILL", T.filter (/= '\n') process]
+
 main :: IO ()
 main = do
   cArgs <- cmdArgs elixirSuite
@@ -76,3 +87,7 @@ main = do
           void $ runElixirMigrations (elixirProjectPath home racing) racing
 
         runMixSuite cArgs
+
+        -- The redis server is started async and stays in the background so
+        -- we're explicitly shutting it down.
+        when (withRedis cArgs) closeRedisServer
