@@ -60,34 +60,32 @@ elixirProjectPath Nothing projectName = fromText projectName
 closeRedisServer :: Sh ()
 closeRedisServer = do
   echo "Trying to kill Redis server...\n"
-  shelly $
-    silently $ do
-      process <- run "pgrep" ["6379"]
-      unless (process == "") $ do
-        echo "Killing Redis server...\n"
-        run_ "kill" ["-s", "TERM", T.filter (/= '\n') process]
+  shelly . silently $ do
+    process <- run "pgrep" ["6379"]
+    unless (process == "") $ do
+      echo "Killing Redis server...\n"
+      run_ "kill" ["-s", "TERM", T.filter (/= '\n') process]
 
 main :: IO ()
 main = do
   cArgs <- cmdArgs elixirSuite
-  shelly . verbosely $
-    do
-      home <- get_env "HOME"
+  shelly . verbosely $ do
+    home <- get_env "HOME"
 
-      when (withRedis cArgs) $ do
-        void $ asyncSh runRedisServer
+    when (withRedis cArgs) $ do
+      void $ asyncSh runRedisServer
 
-      when (isZedQL cArgs) $ do
-        let (racing, zedApi) = ("racing-api", "zed-api")
-        void $ runElixirMigrations (elixirProjectPath home zedApi) zedApi
-        void $ runElixirMigrations (elixirProjectPath home racing) racing
+    when (isZedQL cArgs) $ do
+      let (racing, zedApi) = ("racing-api", "zed-api")
+      void $ runElixirMigrations (elixirProjectPath home zedApi) zedApi
+      void $ runElixirMigrations (elixirProjectPath home racing) racing
 
-      -- we're capturing the exit code here so we can do cleanup tasks even
-      -- if the test suite fails
-      suiteExitCode <- runMixSuite cArgs
+    -- we're capturing the exit code here so we can do cleanup tasks even
+    -- if the test suite fails
+    suiteExitCode <- runMixSuite cArgs
 
-      -- The redis server is started async and stays in the background so
-      -- we're explicitly shutting it down
-      when (withRedis cArgs) closeRedisServer
+    -- The redis server is started async and stays in the background so
+    -- we're explicitly shutting it down
+    when (withRedis cArgs) closeRedisServer
 
-      exit suiteExitCode
+    exit suiteExitCode
