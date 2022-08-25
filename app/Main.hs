@@ -29,21 +29,16 @@ elixirSuite =
 runRedisServer :: Sh ()
 runRedisServer = do
   echo "Running Redis server...\n"
-  escaping False $
-    shelly $
-      silently $ do
-        run_ "redis-server" []
+  shelly . escaping False . silently $ run_ "redis-server" []
 
 runMixSuite :: Fishy -> Sh Int
 runMixSuite cArgs = do
   echo "Running mix test suite...\n"
-  shelly $
-    errExit False $
-      verbosely $ do
-        cd $ project cArgs
-        run_ "mix" $ "test" : maybeToList (testPath cArgs) ++ ["--color"]
+  shelly . errExit False . verbosely $ do
+    cd $ project cArgs
+    run_ "mix" $ "test" : maybeToList (testPath cArgs) ++ ["--color"]
 
-        lastExitCode
+    lastExitCode
 
 runElixirMigrations :: FilePath -> Text -> Sh ()
 runElixirMigrations projectPath appName = do
@@ -75,25 +70,24 @@ closeRedisServer = do
 main :: IO ()
 main = do
   cArgs <- cmdArgs elixirSuite
-  shelly $
-    verbosely $
-      do
-        home <- get_env "HOME"
+  shelly . verbosely $
+    do
+      home <- get_env "HOME"
 
-        when (withRedis cArgs) $ do
-          void $ asyncSh runRedisServer
+      when (withRedis cArgs) $ do
+        void $ asyncSh runRedisServer
 
-        when (isZedQL cArgs) $ do
-          let (racing, zedApi) = ("racing-api", "zed-api")
-          void $ runElixirMigrations (elixirProjectPath home zedApi) zedApi
-          void $ runElixirMigrations (elixirProjectPath home racing) racing
+      when (isZedQL cArgs) $ do
+        let (racing, zedApi) = ("racing-api", "zed-api")
+        void $ runElixirMigrations (elixirProjectPath home zedApi) zedApi
+        void $ runElixirMigrations (elixirProjectPath home racing) racing
 
-        -- we're capturing the exit code here so we can do cleanup tasks even
-        -- if the test suite fails
-        suiteExitCode <- runMixSuite cArgs
+      -- we're capturing the exit code here so we can do cleanup tasks even
+      -- if the test suite fails
+      suiteExitCode <- runMixSuite cArgs
 
-        -- The redis server is started async and stays in the background so
-        -- we're explicitly shutting it down
-        when (withRedis cArgs) closeRedisServer
+      -- The redis server is started async and stays in the background so
+      -- we're explicitly shutting it down
+      when (withRedis cArgs) closeRedisServer
 
-        exit suiteExitCode
+      exit suiteExitCode
