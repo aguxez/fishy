@@ -13,7 +13,7 @@ import qualified Data.Text as T
 import Shelly
 import System.Console.CmdArgs.Implicit
 
-default (T.Text)
+default (Text)
 
 data Fishy = ElixirProject {project :: FilePath, testPath :: Maybe Text, withRedis :: Bool, isZedQL :: Bool} deriving (Show, Data, Typeable)
 
@@ -28,30 +28,32 @@ elixirSuite =
 
 runRedisServer :: Sh ()
 runRedisServer = do
-  echo "Running Redis server..."
+  echo "Running Redis server...\n"
   escaping False $
     shelly $
       silently $ do
         run_ "redis-server" []
 
-runMixSuite :: Fishy -> Sh ()
+runMixSuite :: Fishy -> Sh Int
 runMixSuite cArgs = do
-  echo "Running mix test suite..."
+  echo "Running mix test suite...\n"
   shelly $
-    verbosely $ do
-      cd $ project cArgs
-      run_ "mix" $ "test" : maybeToList (testPath cArgs) ++ ["--color"]
+    errExit False $
+      verbosely $ do
+        cd $ project cArgs
+        run_ "mix" $ "test" : maybeToList (testPath cArgs) ++ ["--color"]
+
+        lastExitCode
 
 runElixirMigrations :: FilePath -> Text -> Sh ()
 runElixirMigrations projectPath appName = do
-  echo $ T.concat ["Running Elixir migrations for ", appName, "..."]
-  shelly $
-    silently $ do
-      setenv "MIX_ENV" "test"
+  echo $ T.concat ["Running Elixir migrations for ", appName, "...\n"]
+  shelly $ do
+    setenv "MIX_ENV" "test"
 
-      cd projectPath
-      let (mix, ectoSetup) = mixEctoSetup
-      run_ mix ectoSetup
+    cd projectPath
+    let (mix, ectoSetup) = mixEctoSetup
+    run_ mix ectoSetup
 
 mixEctoSetup :: (FilePath, [Text])
 mixEctoSetup = let setupCommands = "do" : ["ecto.drop,", "ecto.create,", "ecto.migrate"] in ("mix", setupCommands)
@@ -62,13 +64,13 @@ elixirProjectPath Nothing projectName = fromText projectName
 
 closeRedisServer :: Sh ()
 closeRedisServer = do
-  echo "Trying to kill Redis server..."
+  echo "Trying to kill Redis server...\n"
   shelly $
     silently $ do
       process <- run "pgrep" ["6379"]
       unless (process == "") $ do
-        echo "Killing Redis server..."
-        run_ "kill" ["-KILL", T.filter (/= '\n') process]
+        echo "Killing Redis server...\n"
+        run_ "kill" ["-s", "TERM", T.filter (/= '\n') process]
 
 main :: IO ()
 main = do
@@ -86,8 +88,12 @@ main = do
           void $ runElixirMigrations (elixirProjectPath home zedApi) zedApi
           void $ runElixirMigrations (elixirProjectPath home racing) racing
 
-        runMixSuite cArgs
+        -- we're capturing the exit code here so we can do cleanup tasks even
+        -- if the test suite fails
+        suiteExitCode <- runMixSuite cArgs
 
         -- The redis server is started async and stays in the background so
-        -- we're explicitly shutting it down.
+        -- we're explicitly shutting it down
         when (withRedis cArgs) closeRedisServer
+
+        exit suiteExitCode
