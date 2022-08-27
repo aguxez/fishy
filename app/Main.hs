@@ -51,7 +51,7 @@ runElixirMigrations projectPath appName = do
     run_ mix ectoSetup
 
 mixEctoSetup :: (FilePath, [Text])
-mixEctoSetup = let setupCommands = "do" : ["ecto.drop,", "ecto.create,", "ecto.migrate"] in ("mix", setupCommands)
+mixEctoSetup = let setupCommands = ["do", "ecto.drop,", "ecto.create,", "ecto.migrate"] in ("mix", setupCommands)
 
 elixirProjectPath :: Maybe Text -> Text -> FilePath
 elixirProjectPath (Just home) projectName = fromText . T.intercalate "" $ [home, "/Development/zed/", projectName]
@@ -61,10 +61,12 @@ closeRedisServer :: Sh ()
 closeRedisServer = do
   echo "Trying to kill Redis server...\n"
   shelly . silently $ do
-    process <- run "pgrep" ["6379"]
-    unless (process == "") $ do
-      echo "Killing Redis server...\n"
-      run_ "kill" ["-s", "TERM", T.filter (/= '\n') process]
+    res <- run "pgrep" ["6379"]
+    case T.unsnoc res of
+      Just (pid, _) -> do
+        echo "Killing Redis server...\n"
+        run_ "kill" ["-s", "TERM", pid]
+      Nothing -> return ()
 
 main :: IO ()
 main = do
