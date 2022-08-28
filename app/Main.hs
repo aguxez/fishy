@@ -20,7 +20,7 @@ import Weather (weatherFrom)
 default (Text)
 
 data Fishy
-  = ElixirProject {project :: FilePath, testPath :: Maybe Text, withRedis :: Bool, isZedQL :: Bool}
+  = Mix {project :: FilePath, testPath :: Maybe Text, withRedis :: Bool, isZedQL :: Bool}
   | Weather {cityName :: Text}
   deriving (Show, Data, Typeable)
 
@@ -30,7 +30,7 @@ configPath (Just home) = fromText . T.intercalate "" $ [home, "/.fishy/conf.yaml
 
 elixirSuite :: Fishy
 elixirSuite =
-  ElixirProject
+  Mix
     { project = def &= help "Path to Elixir project",
       testPath = def &= help "Optional path to the test file",
       withRedis = def &= help "Whether to spawn a local Redis instance",
@@ -122,5 +122,5 @@ main = do
     config <- readConfig configPath'
 
     case cArgs of
-      (ElixirProject {}) -> handleElixirSuite cArgs home
+      (Mix {}) -> handleElixirSuite cArgs home
       (Weather _) -> handleWeather cArgs config
