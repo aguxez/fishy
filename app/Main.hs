@@ -2,20 +2,31 @@
 {-# LANGUAGE ExtendedDefaultRules #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -fno-cse #-}
+{-# OPTIONS_GHC -fno-warn-partial-fields #-}
 {-# OPTIONS_GHC -fno-warn-type-defaults #-}
 
 module Main (main) where
 
+import Config (FishyConfig, readConfig)
 import Control.Monad (void)
 import Data.Maybe (maybeToList)
 import Data.Text (Text)
 import qualified Data.Text as T
+import Data.Text.Encoding (encodeUtf8)
 import Shelly
 import System.Console.CmdArgs.Implicit
+import Weather (weatherFrom)
 
 default (Text)
 
-data Fishy = ElixirProject {project :: FilePath, testPath :: Maybe Text, withRedis :: Bool, isZedQL :: Bool} deriving (Show, Data, Typeable)
+data Fishy
+  = ElixirProject {project :: FilePath, testPath :: Maybe Text, withRedis :: Bool, isZedQL :: Bool}
+  | Weather {cityName :: Text}
+  deriving (Show, Data, Typeable)
+
+configPath :: Maybe Text -> FilePath
+configPath Nothing = ""
+configPath (Just home) = fromText . T.intercalate "" $ [home, "/.fishy/conf.yaml"]
 
 elixirSuite :: Fishy
 elixirSuite =
@@ -25,6 +36,9 @@ elixirSuite =
       withRedis = def &= help "Whether to spawn a local Redis instance",
       isZedQL = def &= help "Whether or not the current project is ZED QL so we can run other migrations first"
     }
+
+weather :: Fishy
+weather = Weather {cityName = "" &= help "The name of the city to get the weather of"}
 
 runRedisServer :: Sh ()
 runRedisServer = do
@@ -68,26 +82,45 @@ closeRedisServer = do
         run_ "kill" ["-s", "TERM", pid]
       Nothing -> return ()
 
+handleElixirSuite :: Fishy -> Maybe Text -> Sh ()
+handleElixirSuite cArgs home = do
+  when (withRedis cArgs) $ do
+    void $ asyncSh runRedisServer
+
+  when (isZedQL cArgs) $ do
+    let (racing, zedApi) = ("racing-api", "zed-api")
+    void $ runElixirMigrations (elixirProjectPath home zedApi) zedApi
+    void $ runElixirMigrations (elixirProjectPath home racing) racing
+
+  -- we're capturing the exit code here so we can do cleanup tasks even
+  -- if the test suite fails
+  suiteExitCode <- runMixSuite cArgs
+
+  -- The redis server is started async and stays in the background so
+  -- we're explicitly shutting it down
+  when (withRedis cArgs) closeRedisServer
+
+  exit suiteExitCode
+
+handleWeather :: Fishy -> FishyConfig -> Sh ()
+handleWeather cArgs config = do
+  weatherRes <- liftIO . weatherFrom config . encodeUtf8 . cityName $ cArgs
+  echo weatherRes
+
 main :: IO ()
 main = do
-  cArgs <- cmdArgs elixirSuite
-  shelly . verbosely $ do
+  cArgs <- cmdArgs (modes [elixirSuite, weather])
+  shelly . silently $ do
     home <- get_env "HOME"
+    let configPath' = configPath home
+    configExists <- test_f configPath'
 
-    when (withRedis cArgs) $ do
-      void $ asyncSh runRedisServer
+    unless configExists $ do
+      echo "Config file does not exist..."
+      exit 1
 
-    when (isZedQL cArgs) $ do
-      let (racing, zedApi) = ("racing-api", "zed-api")
-      void $ runElixirMigrations (elixirProjectPath home zedApi) zedApi
-      void $ runElixirMigrations (elixirProjectPath home racing) racing
+    config <- readConfig configPath'
 
-    -- we're capturing the exit code here so we can do cleanup tasks even
-    -- if the test suite fails
-    suiteExitCode <- runMixSuite cArgs
-
-    -- The redis server is started async and stays in the background so
-    -- we're explicitly shutting it down
-    when (withRedis cArgs) closeRedisServer
-
-    exit suiteExitCode
+    case cArgs of
+      (ElixirProject {}) -> handleElixirSuite cArgs home
+      (Weather _) -> handleWeather cArgs config

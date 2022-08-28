@@ -20,7 +20,17 @@ extra-source-files:
 description:         Please see the README on GitHub at <https://github.com/githubuser/fishy#readme>
 
 dependencies:
-- base >= 4.7 && < 5
+  - base >= 4.7 && < 5
+  - shelly
+  - text
+  - cmdargs
+  - aeson
+  - yaml
+  - http-client
+  - http-client-tls
+  - bytestring
+  - containers
+  - conduit
 
 ghc-options:
 - -Wall
@@ -46,9 +56,6 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - fishy
-    - shelly
-    - text
-    - cmdargs
 
 tests:
   fishy-test:
