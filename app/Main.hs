@@ -17,7 +17,7 @@ default (Text)
 
 configPath :: Maybe Text -> FilePath
 configPath Nothing = ""
-configPath (Just home) = fromText . T.concat $ [home, "/.fishy/conf.yaml"]
+configPath (Just home) = fromText . T.concat $ [home, "/.config/fishy/conf.yaml"]
 
 handleWeather :: Fishy -> FishyConfig -> Sh ()
 handleWeather cArgs config = do
