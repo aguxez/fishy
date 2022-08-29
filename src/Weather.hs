@@ -6,6 +6,7 @@ module Weather (weatherFrom, Temperature (..)) where
 import Config (APIKey (..), FishyConfig (..))
 import Data.Aeson (FromJSON (..), decode, withObject, (.:))
 import Data.ByteString (ByteString)
+import qualified Data.ByteString.Lazy as BL
 import Data.List (find)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -27,10 +28,7 @@ instance FromJSON Temperature where
 data LatLon = LatLon Float Float
 
 instance FromJSON LatLon where
-  parseJSON = withObject "LatLon" $ \obj ->
-    LatLon
-      <$> obj .: "lat"
-      <*> obj .: "lon"
+  parseJSON = withObject "LatLon" $ \obj -> LatLon <$> obj .: "lat" <*> obj .: "lon"
 
 endpoint :: RequestType -> Request
 endpoint reqType = parseRequest_ ("https://api.openweathermap.org" ++ rest reqType)
@@ -52,34 +50,50 @@ floatToText :: Float -> Text
 floatToText = T.pack . show
 
 findOpenWeatherApiKey :: FishyConfig -> Text
-findOpenWeatherApiKey (FishyConfig apiKeys) = maybe "" apiKeyValue (apiKey apiKeys)
+findOpenWeatherApiKey (FishyConfig apiKeys) = maybe "" apiKeyValue (findOpenWeatherApiKey' apiKeys)
   where
-    apiKey :: [APIKey] -> Maybe APIKey
-    apiKey = find (\v -> apiKeyName v == "open_weather")
+    findOpenWeatherApiKey' :: [APIKey] -> Maybe APIKey
+    findOpenWeatherApiKey' = find (\v -> apiKeyName v == "open_weather")
+
+handleGeoResponse :: Response BL.ByteString -> Either Text LatLon
+handleGeoResponse geoRes = do
+  case decodeGeo geoRes of
+    Just [] -> Left "Could not find a location with that name..."
+    Just (x : _) -> Right x
+    Nothing -> Left "There was an error decoding the geolocation response..."
+  where
+    decodeGeo :: Response BL.ByteString -> Maybe [LatLon]
+    decodeGeo = decode . responseBody
+
+handleWeatherResponse :: Response BL.ByteString -> ByteString -> Either Text Text
+handleWeatherResponse weatherRes city = do
+  case decodeWeatherRes weatherRes of
+    Just weather -> do
+      Right $
+        T.intercalate
+          "\n"
+          [ T.concat [T.toTitle (decodeUtf8 city), "\n"],
+            T.concat ["Temperature: ", floatToText $ grades weather],
+            T.concat ["Feels like: ", floatToText $ feelsLike weather]
+          ]
+    Nothing -> Left "There was an error decoding the temperature response..."
+  where
+    decodeWeatherRes :: Response BL.ByteString -> Maybe Temperature
+    decodeWeatherRes = decode . responseBody
 
 weatherFrom :: FishyConfig -> ByteString -> IO Text
 weatherFrom config city = do
-  man <- newManager tlsManagerSettings
+  manager <- newManager tlsManagerSettings
   let geoUrl = endpoint Geo
+      weatherUrl = endpoint Weather
       apiKey = findOpenWeatherApiKey config
       geoReq = setQueryString (weatherQueryString (GeoBody apiKey city)) geoUrl
 
-  geoRes <- httpLbs geoReq man
+  geoRes <- httpLbs geoReq manager
+  case handleGeoResponse geoRes of
+    Right (LatLon lat lon) -> do
+      let weatherReq = setQueryString (weatherQueryString (WeatherBody apiKey lat lon)) weatherUrl
+      weatherRes <- httpLbs weatherReq manager
 
-  case decode (responseBody geoRes) :: Maybe [LatLon] of
-    Just [] -> return "Could not find a location with that name..."
-    Just ((LatLon lat lon) : _) -> do
-      let weatherUrl = endpoint Weather
-          weatherReq = setQueryString (weatherQueryString (WeatherBody apiKey lat lon)) weatherUrl
-      weatherRes <- httpLbs weatherReq man
-      case decode (responseBody weatherRes) :: Maybe Temperature of
-        Just weather -> do
-          return $
-            T.intercalate
-              "\n"
-              [ T.concat [T.toTitle (decodeUtf8 city), "\n"],
-                T.concat ["Temperature: ", floatToText $ grades weather],
-                T.concat ["Feels like: ", floatToText $ feelsLike weather]
-              ]
-        Nothing -> return "There was an error decoding the temperature response..."
-    Nothing -> return "There was an error decoding the geolocation response..."
+      return $ either id id (handleWeatherResponse weatherRes city)
+    Left err -> return err

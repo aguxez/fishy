@@ -26,7 +26,7 @@ data Fishy
 
 configPath :: Maybe Text -> FilePath
 configPath Nothing = ""
-configPath (Just home) = fromText . T.intercalate "" $ [home, "/.fishy/conf.yaml"]
+configPath (Just home) = fromText . T.concat $ [home, "/.fishy/conf.yaml"]
 
 elixirSuite :: Fishy
 elixirSuite =
@@ -68,7 +68,7 @@ mixEctoSetup :: (FilePath, [Text])
 mixEctoSetup = let setupCommands = ["do", "ecto.drop,", "ecto.create,", "ecto.migrate"] in ("mix", setupCommands)
 
 elixirProjectPath :: Maybe Text -> Text -> FilePath
-elixirProjectPath (Just home) projectName = fromText . T.intercalate "" $ [home, "/Development/zed/", projectName]
+elixirProjectPath (Just home) projectName = fromText . T.concat $ [home, "/Development/zed/", projectName]
 elixirProjectPath Nothing projectName = fromText projectName
 
 closeRedisServer :: Sh ()
