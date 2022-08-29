@@ -25,7 +25,9 @@ source-repository head
 
 library
   exposed-modules:
+      CLIArgs
       Config
+      Elixir
       Lib
       Weather
   other-modules:
